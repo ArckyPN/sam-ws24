@@ -1,0 +1,14 @@
+[package]
+name = "demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.91"
+clap = { version = "4.5.20", features = ["derive"] }
+linfa = "0.7.0"
+linfa-ica = "0.7.0"
+ndarray = "0.15"
+ndarray-rand = "0.14"
+plotters = "0.3.7"
+rand_xoshiro = "0.6.0"

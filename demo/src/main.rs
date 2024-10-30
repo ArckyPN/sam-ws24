@@ -254,10 +254,13 @@ fn plot(args: PlotArgs) -> anyhow::Result<()> {
 
     root_area.present().context("failed saving plot")?;
 
+    println!("saved plot to {}", args.output);
+
     Ok(())
 }
 
 fn main() -> anyhow::Result<()> {
+    let now = std::time::Instant::now();
     let cli = Cli::parse();
 
     let base = Array::linspace(cli.time_start, cli.time_end, cli.num_samples);
@@ -296,5 +299,6 @@ fn main() -> anyhow::Result<()> {
         y_2: y.column(1).to_vec(),
     })?;
 
+    println!("Runtime: {:?}", now.elapsed());
     Ok(())
 }

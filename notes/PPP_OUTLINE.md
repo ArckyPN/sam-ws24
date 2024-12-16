@@ -1,0 +1,167 @@
+# Ideas for the final Presentation
+
+- Introduction
+- Structure
+  - Introduction
+  - Structure
+  - Motivation
+  - FastICA
+  - Demo
+  - Use-Cases
+- Motivation
+  - Visual Scenario (Cocktail Party Problem)
+    - draw image (mental and literally)
+    - two person talking simultaneously (specify they could be talking a third and fourth person to explain why they talking simultaneously)
+    - two microphones are recording from different position
+    - each getting a weighted sum of both speaker's signals
+  - Solution
+    - Independent Component Analysis (ICA), specifically FastICA
+    - ICA is highly general-purpose method of signal processing and data analysis
+    - CPP is a very easy to grasp use-case for ICA but there are more, later
+- FastICA
+  - Recap Motivation mathematically
+    - linear equation of mixed signals
+    - estimating $a_{ij}$ factors
+    - enough to assume both signals are statistically independent at any point in time
+    - the Independence can be exploited to extract the original signals
+      - show plot example (from code, ideally with flipped magnitude, which has no significance)
+  - Baseline definition of ICA
+    - linear equation: $x_j = a_{j1}s_1 + a_{j2}s_2 + \dots + a_{jn}s_n, \forall j$
+    - assumption 1: all $x$ and $s$ are random variables
+      - observed values are samples of the random variables
+    - assumption 2: independent components $x_i$ have zero-mean (centered around y-axis, average is zero),without loss of generality
+      - when not true, $x_i$ can be made zero-mean by subtracting the sample mean
+    - for convenience use vector-matrix notation
+      - **x** is the random vector $x_1 \dots x_n$ (all mixtures)
+      - **s** is the random vector $s_1 \dots s_n$ (original signals?)
+      - **A** is the mixing matrix $a_{ij}$
+      - simplifies the above linear equation to: $\bold{x} = \bold{As}$ (this is called the ICA Model)
+      - note all vectors are column vectors: $\begin{pmatrix}x_1\\\vdots\\x_n\end{pmatrix} = \begin{pmatrix}a_{11} & \dots & a_{1j}\\\vdots & \ddots & \vdots\\a_{i1} & \dots & a_{ij}\end{pmatrix} \begin{pmatrix}s_1\\\vdots\\s_n\end{pmatrix}$
+    - the ICA Model describes how observed data is generated in the mixing process of $s_i$
+      - **x** can be observed
+      - the components **A** and **s** are latent variables (cannot be directly observed) must be estimated from **x**
+    - very general assumptions are needed to solve the ICA Model
+      - starting point is the assumption that all components $s_i$ are statistically independent (definition later)
+      - additionally they must have a nongaussian distribution, however the distribution are assumed to be unknown
+      - for simplicity it is also assumed that **A** is square (not always necessary)
+      - after **A** has been estimated, its inverse can be used to rearrange the linear equation to $\bold{s} = \bold{A}^{-1}\bold{x}$
+        - now the original signals are a simple Matrix/Vector multiplication away
+  - Independence
+    - tl;dr: independence is when it is not possible to determine any information about one value using another
+  - Expected Value and random variables (intersection)
+    - // TODO
+  - Nongaussianity is integral
+    - impossible without it
+    - also the reason why ICA is such a recent technique
+      - usually in statistical theory, random variables are expected to be of gaussian distribution
+    - Central Limit Theorem: sum of independent random variables moves closer to gaussian distribution
+      - in other words the sum is more gaussian than the individual components
+      - looking at just one component:
+        - formula: $y = w^Tx = \sum_i\bold{w}_i\bold{x}_i$, **w** is to be determined
+        - if **w** were one row of **A**, then this would actually result in one of the components
+        - **w** cannot be determined exactly but approximated
+      - principle:
+        - defining: $\bold{z} = \bold{A}^T\bold{w}$
+        - gives: $y = \bold{w}^T\bold{x} = \bold{w}^T\bold{A}\bold{s} = \bold{z}^T\bold{s}$
+        - making $y$ a linear combination of $s_i$
+        - goal: maximize the nongaussianity of $\bold{w}^T\bold{x}$, which would lead to a $\bold{z}$ with only one none zero component and ultimately to one of the independent components of $\bold{s}$
+        - this is a heuristic approach to solve the ICA Model
+      - measuring nongaussianity
+        - to do the above a quantitative measure of nongaussian for a random variable $y$ is required
+        - assumptions to simplify (will be part of the preprocessing later):
+          - $y$ is centered (zero-mean)
+          - variance of $1$ (unit variance)
+        - 1: Kurtosis
+          - $kurt(y) = E\{y^4\} - 3(E\{y^2\})^2$
+          - unit variance simplifies to: $kurt(y) = E\{y^4\} - 3$
+            - just a normalized fourth moment $E\{y^4\}$
+            - for gaussian $y$ the fourth moment is $3(E\{y^2\})^2$ making kurtosis zero
+          - kurtosis nonzero means nongaussian
+            - bot not all random variables have a nonzero kurtosis
+          - absolute value of kurtosis is used as measure for nongaussianity (because it can be negative)
+          - (skipping over the theoretical analysis stuff)
+          - not robust (doesn't cover a few edge cases where nongaussian random variables have zero kurtosis)
+        - 2: Negentropy
+          - basic concept of information theory
+          - it is the observable degree of information of a random variable, how "random" it is (unpredictable/unstructured)
+          - discrete random variable $Y$: $H(Y) = - \sum_iP(Y=a_i)\log P(Y=a_i)$
+            - similar to expected value, weighted sum of probabilities
+          - (skipping continuous definition, digital signals are always discrete)
+          - fundamental result: a gaussian variable has the largest entropy among all random variables of equal variance (here: unit variance, so all the same)
+            - can be used to measure nongaussianity
+          - slightly modified version is used to have a measure of zero for gaussian variables and always non-negative
+            - Negentropy: $J(\bold{y}) = H(\bold{y}_{gauss}) - H(\bold{y})$
+            - $\bold{y}_{gauss}$ is gaussian random variable with the same covariance matrix as $\bold{y}$
+            - is always(!) non-negative and for gaussian variables zero
+          - very good measure for nongaussianity
+            - however, computational very intensive
+        - 3: Approximation of Negentropy
+          - classical Approximation: $J(y) \approx \frac{1}{12}E\{y^3\}^2 + \frac{1}{48}kurt(y)^2$
+            - $y$ is assumed to be of zero mean and unit variance
+            - limited results and same non-robustness due to Kurtosis
+          - paper created a new approximation: $J(y) \approx \sum_{i=1}^pk_i[E\{G_i(y)\} - E\{G_i(\nu)\}]^2$
+            - $k_i$ positive constants
+            - $\nu$ is a gaussian variable of zero mean and unit variance
+            - $y$ still zero mean and unit variance as well
+            - $G_i$ are nonquadratic functions
+            - not always very accurate but still maintains the property that gaussian variables are zero and nongaussian non-negative
+          - can be further simplified through nonquadratic functions: $J(y) \propto [E\{G(y)\} - E\{G(\nu)\}]^2$
+            - !!! this is the formula used for FastICA !!!
+            - practically any nonquadratic function works
+            - slow growing functions give better estimations
+            - good choices:
+              - $G_1(u) = \frac{1}{a_1}\log\cosh a_1u$ , $a_1 \in [1, 2]$
+              - $G_2(u) = -e^{(-\frac{u^2}{2})}$
+          - conclusion:
+            - this gives a middle ground between accuracy of Negentropy and simplicity of Kurtosis
+        - Alternatives:
+          - Minimization of Mutual Information
+          - Maximum Likelihood Estimation
+          - Infomax Principle
+      - Projection Pursuit
+        - skip this, seems like a weird pseudo alternative
+    - Preprocessing
+      - steps to simplify the estimation
+      - Centering
+        - subtract the mean of **x** to make it zero-mean
+        - this will require adding the mean of **s** back to it at the end to shift it back to its original position
+      - Whitening
+        - this is done after Centering
+        - transform **x** linearly to make it white, meaning components are uncorrelated and their variance is 1 (unit variance), giving new signal $\bold{\tilde{x}}$
+        - as formula: $E\{\bold{\tilde{x}}\bold{\tilde{x}}^T\} = I$
+        - (long explanation on how to do this, but skip this? "goes beyond the scope of this presentation")
+      - Further Preprocessing
+        - application specific preprocessing
+          - for example: band-pass filtering time-signals
+- FastICA Algorithm
+  - maximizing the contrast function
+  - this is done after preprocessing, signals are assumed to be zero-mean and unit variance
+  - one unit
+    - one unit being an artificial neuron with a weight vector **w** to updated by the learning rule
+    - learning rule: find a direction where $\bold{w}^T\bold{x}$ maximizes nongaussianity
+    - basic procedure:
+      1. choose initial weight vector **w** (e.g. random)
+      2. let $w^+ = E\{\bold{x}g(\bold{w}^T\bold{x})\} - E\{g'(\bold{w}^T\bold{x})\}\bold{w}$
+      3. let $w = \frac{\bold{w}^+}{||\bold{w}^+||}$
+      4. if not converged, back to 2nd step (converged: old and new value of **w** point in the same direction, dot-product is (almost) equal 1)
+    - don't have to the same point (flipped directions)
+    - nongaussian maxima is taken at a certain optimum of $E\{G(\bold{w}^T\bold{x})\}$
+    - using Kuhn-Tucker conditions
+      - constraint $E\{(\bold{w}^T\bold{x})^2\} = ||\bold{w}||^2 = 1$
+      - optima at $E\{\bold{x}g(\bold{w}^T\bold{x})\} - \bold{\beta}\bold{w} = 0$
+    - solving using Newton's method
+      - TODO
+  - several units
+    - 
+- Demo
+  - show Code, etc.
+- Use-Cases (last point)
+  - Cocktail Party Problem, extract isolated speaker signals
+    - recap, two speaker, two different mics, extract the original signals
+  - Electroencephalogram (EEG), brain activity measurements (funny cap with tons of electrodes)
+    - many electrodes record a mixtures of brain waves
+    - ICA can extract the original brain activity
+  - Feature Extraction
+    - finding suitable representations of image, audio and other data
+    - for example for compression and denoising
+    - 

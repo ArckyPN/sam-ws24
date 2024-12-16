@@ -8,6 +8,8 @@ anyhow = "1.0.91"
 clap = { version = "4.5.20", features = ["derive"] }
 linfa = "0.7.0"
 linfa-ica = "0.7.0"
+minimp3 = "0.5.1"
+mp3lame-encoder = "0.2.0"
 ndarray = "0.15"
 ndarray-rand = "0.14"
 plotters = "0.3.7"

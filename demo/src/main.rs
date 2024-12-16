@@ -1,12 +1,18 @@
-use std::path::PathBuf;
+use std::{
+    fs::File,
+    i16,
+    path::{self, PathBuf},
+};
 
-use anyhow::Context;
-use clap::Parser;
+use anyhow::{bail, Context};
+use clap::{Args, Parser, Subcommand};
 use linfa::{
     dataset::DatasetBase,
     traits::{Fit, Predict},
 };
 use linfa_ica::fast_ica::{FastIca, GFunc};
+use minimp3::Frame;
+use mp3lame_encoder::FlushNoGap;
 use ndarray::{array, concatenate, Array, Axis};
 use ndarray_rand::{rand::SeedableRng, rand_distr::Uniform, RandomExt};
 use plotters::prelude::*;
@@ -33,7 +39,30 @@ const LEGEND2: ShapeStyle = ShapeStyle {
 };
 
 #[derive(Debug, Parser)]
+#[command(version, about, long_about = None)]
 struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+
+    /// path to the plot output
+    #[arg(short, long, default_value = "plot.png")]
+    output: PathBuf,
+
+    #[command(flatten)]
+    resolution: Resolution,
+}
+
+#[derive(Subcommand, Clone, Debug)]
+enum Commands {
+    /// FastICA example using sine and box curves
+    Example(CliExample),
+
+    /// FastICA example using two speech signals
+    Speech(CliSpeech),
+}
+
+#[derive(Debug, Args, Clone)]
+struct CliExample {
     /// the number of samples used to create the original signals
     #[arg(short = 'n', long, default_value = "2000")]
     num_samples: usize,
@@ -45,13 +74,20 @@ struct Cli {
     /// the start time of the original signals in seconds
     #[arg(short = 'e', long, default_value = "10.")]
     time_end: f64,
+}
 
-    /// path to the plot output
-    #[arg(short, long, default_value = "plot.png")]
-    output: PathBuf,
+#[derive(Debug, Args, Clone)]
+struct CliSpeech {
+    /// path to first speaker file (mp3)
+    #[arg(short = '1', long, default_value = "jane.mp3")]
+    speaker_1: PathBuf,
 
-    #[command(flatten)]
-    resolution: Resolution,
+    /// path to second speaker file (mp3)
+    #[arg(short = '2', long, default_value = "bill.mp3")]
+    speaker_2: PathBuf,
+
+    #[arg(short = 'o', long, default_value = "mix.mp3")]
+    mix_output: PathBuf,
 }
 
 #[derive(Debug, Copy, Clone, Parser)]
@@ -228,6 +264,7 @@ fn plot(args: PlotArgs) -> anyhow::Result<()> {
         let mut cc = ChartBuilder::on(row)
             .margin(MARGIN)
             .margin_right(4 * MARGIN)
+            .margin_left(8 * MARGIN)
             .set_left_and_bottom_label_area_size(LABEL_AREA)
             .caption(captions[i], CAPTION_STYLE)
             .build_cartesian_2d(x_start..x_end, y_start..y_end)?;
@@ -236,6 +273,8 @@ fn plot(args: PlotArgs) -> anyhow::Result<()> {
             .x_labels(NUM_X_LABEL)
             .y_labels(NUM_Y_LABEL)
             .label_style(LABEL_STYLE)
+            .y_label_formatter(&|y| format!("{:1.3e}", y))
+            .x_label_formatter(&|x| format!("{:1.3e}", x))
             .draw()?;
 
         cc.draw_series(LineSeries::new(args.graph(graphs[i].0), &RED))?
@@ -249,6 +288,7 @@ fn plot(args: PlotArgs) -> anyhow::Result<()> {
         cc.configure_series_labels()
             .border_style(BLACK)
             .label_font(LABEL_STYLE)
+            .position(SeriesLabelPosition::UpperRight)
             .draw()?;
     }
 
@@ -259,11 +299,123 @@ fn plot(args: PlotArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn main() -> anyhow::Result<()> {
-    let now = std::time::Instant::now();
-    let cli = Cli::parse();
+fn read_audio_file<P>(path: P) -> anyhow::Result<Frame>
+where
+    P: AsRef<path::Path>,
+{
+    let mut frame = Frame {
+        data: Vec::new(),
+        sample_rate: 0,
+        channels: 0,
+        layer: 0,
+        bitrate: 0,
+    };
 
-    let base = Array::linspace(cli.time_start, cli.time_end, cli.num_samples);
+    let mut decoder = minimp3::Decoder::new(File::open(path)?);
+
+    loop {
+        match decoder.next_frame() {
+            Ok(f) => {
+                frame.data.extend_from_slice(&f.data);
+                frame.sample_rate = f.sample_rate;
+                frame.channels = f.channels;
+                frame.layer = f.layer;
+                frame.bitrate = f.bitrate;
+            }
+            Err(minimp3::Error::Eof) => break,
+            Err(err) => bail!("mp3 decode: {err}"),
+        }
+    }
+
+    Ok(frame)
+}
+
+fn x_from_frame(frame: &Frame) -> Vec<f64> {
+    frame
+        .data
+        .iter()
+        .enumerate()
+        // TODO determine timestamps of sample
+        .map(|(i, _)| i as f64)
+        .collect()
+}
+
+fn encode_frame<P>(path: P, frame: Frame) -> anyhow::Result<()>
+where
+    P: AsRef<path::Path>,
+{
+    let mut encoder = mp3lame_encoder::Builder::new().context("new encoder")?;
+    encoder
+        .set_num_channels(frame.channels as u8)
+        .expect("set channels");
+    encoder
+        .set_sample_rate(frame.sample_rate as u32)
+        .expect("set sample rate");
+    encoder
+        .set_brate(mp3lame_encoder::Bitrate::Kbps96)
+        .expect("set bitrate");
+    let mut encoder = encoder.build().expect("build encoder");
+
+    let input = mp3lame_encoder::MonoPcm(&frame.data);
+    let mut output = Vec::with_capacity(mp3lame_encoder::max_required_buffer_size(input.0.len()));
+
+    let encoded_size = encoder
+        .encode(input, output.spare_capacity_mut())
+        .expect("encoding");
+
+    unsafe {
+        output.set_len(output.len().wrapping_add(encoded_size));
+    }
+
+    let encoded_size = encoder
+        .flush::<FlushNoGap>(output.spare_capacity_mut())
+        .expect("flush");
+
+    unsafe {
+        output.set_len(output.len().wrapping_add(encoded_size));
+    }
+
+    std::fs::write(path, output)?;
+
+    Ok(())
+}
+
+// fn mix_frames(f1: &Frame, f2: &Frame)
+
+fn speech(args: CliSpeech) -> anyhow::Result<(Vec<f64>, Vec<f64>, Vec<f64>)> {
+    let signal_1 = read_audio_file(&args.speaker_1)?;
+    let signal_2 = read_audio_file(&args.speaker_2)?;
+
+    let one = signal_1.data.clone();
+    let two = signal_2.data.clone();
+
+    let mix = Frame {
+        data: one
+            .iter()
+            .zip(two)
+            .map(|(one, two)| one + two)
+            .collect::<Vec<i16>>(),
+        sample_rate: signal_1.sample_rate,
+        channels: signal_1.channels,
+        layer: signal_1.layer,
+        bitrate: signal_1.bitrate,
+    };
+    // TODO apply mixing matrix first
+    // TODO save mixed signals separately or combined in one?
+    // TODO rodio crate to directly play signals?
+    encode_frame(&args.mix_output, mix)?;
+
+    let x = x_from_frame(&signal_1);
+
+    Ok((
+        x,
+        signal_1.data.iter().map(|v| v.to_owned() as f64).collect(),
+        signal_2.data.iter().map(|v| v.to_owned() as f64).collect(),
+    ))
+}
+
+fn example(args: CliExample) -> anyhow::Result<(Vec<f64>, Vec<f64>, Vec<f64>)> {
+    let base = Array::linspace(args.time_start, args.time_end, args.num_samples);
 
     let s_1 = base.mapv(|x| (2. * x).sin());
 
@@ -278,9 +430,29 @@ fn main() -> anyhow::Result<()> {
         s_2.clone().insert_axis(Axis(1))
     ];
     let mut rng = Xoshiro256Plus::seed_from_u64(1234);
-    s += &Array::random_using((cli.num_samples, 2), Uniform::new(-0.05, 0.05), &mut rng);
+    s += &Array::random_using((args.num_samples, 2), Uniform::new(-0.05, 0.05), &mut rng);
 
-    let a = array![[1., 1.], [0.5, 2.]];
+    Ok((base.to_vec(), s.column(0).to_vec(), s.column(1).to_vec()))
+}
+
+fn main() -> anyhow::Result<()> {
+    let now = std::time::Instant::now();
+    let cli = Cli::parse();
+
+    let (base, s_1, s_2) = match cli.command {
+        Commands::Example(ex) => example(ex)?,
+        Commands::Speech(sp) => speech(sp)?,
+    };
+
+    let (s_1, s_2) = (Array::from_iter(s_1), Array::from_iter(s_2));
+
+    let s = concatenate![
+        Axis(1),
+        s_1.clone().insert_axis(Axis(1)),
+        s_2.clone().insert_axis(Axis(1))
+    ];
+
+    let a = array![[0.75, 1.5], [0.5, 2.]];
     let x = s.dot(&a.t());
 
     let ica = FastIca::params().gfunc(GFunc::Logcosh(1.0));
@@ -290,7 +462,7 @@ fn main() -> anyhow::Result<()> {
     plot(PlotArgs {
         output: cli.output.to_str().context("invalid path")?.to_string(),
         res: cli.resolution,
-        x: base.to_vec(),
+        x: base,
         s_1: s.column(0).to_vec(),
         s_2: s.column(1).to_vec(),
         x_1: x.column(0).to_vec(),
@@ -300,5 +472,6 @@ fn main() -> anyhow::Result<()> {
     })?;
 
     println!("Runtime: {:?}", now.elapsed());
+
     Ok(())
 }

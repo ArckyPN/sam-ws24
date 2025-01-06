@@ -14,3 +14,5 @@ Cargo.lock
 *.pdb
 
 *.png
+*_mix.mp3
+*_ica.mp3

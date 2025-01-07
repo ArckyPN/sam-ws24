@@ -1,6 +1,6 @@
 # FastICA Demo Code
 
-A demo using linfa-ica showcasing the FastICA algorithm.
+A demo using `linfa-ica` showcasing the FastICA algorithm. The `linfa-ica` crate is part of the `linfa` ([repo](https://github.com/rust-ml/linfa)) family, Rust Machine Learning implementations akin to Python's scikit-learn.
 
 - [FastICA Demo Code](#fastica-demo-code)
   - [How to install](#how-to-install)
@@ -14,6 +14,9 @@ A demo using linfa-ica showcasing the FastICA algorithm.
 0. download the code: `git clone git@github.com:ArckyPN/sam-ws24.git`
 1. install Rust, follow the instruction from the official installer: [rustup.rs](https://rustup.rs/)
 2. done
+
+> [!IMPORTANT]
+> If you are running Ubuntu or Fedora Linux, you will also need to install some [dependencies](https://github.com/plotters-rs/plotters?tab=readme-ov-file#dependencies) to be able to plot the output
 
 ## How to run
 

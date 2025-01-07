@@ -564,13 +564,16 @@ fn main() -> anyhow::Result<()> {
     let now = std::time::Instant::now();
     let cli = Cli::parse();
 
-    // create the mixing matrix
-    // original mixing matrix (plot on slide 4)
-    // let a = array![[0.75, 1.5], [0.5, 2.]];
-    // ambiguity plot example (plot on slide 9)
-    // let a = array![[2., 1.5], [0.5, 0.75]];
-    // speech example
-    let a = array![[2., 0.5], [0.5, 1.5]];
+    // select different Mixing Matrices depending on the command
+    let a = match cli.command {
+        Commands::Example(_) => {
+            // original mixing matrix (plot on slide 4)
+            array![[0.75, 1.5], [0.5, 2.]]
+            // ambiguity plot example (plot on slide 9)
+            // array![[2., 1.5], [0.5, 0.75]]
+        }
+        Commands::Speech(_) => array![[2., 0.5], [0.5, 1.5]],
+    };
 
     // get the signal data based on the command used
     let (base, s_1, s_2, audio_data) = match cli.command {

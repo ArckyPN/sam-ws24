@@ -574,12 +574,7 @@ fn main() -> anyhow::Result<()> {
 
     // select different Mixing Matrices depending on the command
     let a = match cli.command {
-        Commands::Example(_) => {
-            // original mixing matrix (plot on slide 4)
-            // array![[0.75, 1.5], [0.5, 2.]]
-            // ambiguity plot example (plot on slide 9)
-            array![[2., 1.5], [0.5, 0.75]]
-        }
+        Commands::Example(_) => array![[2., 1.5], [0.5, 0.75]],
         Commands::Speech(_) => array![[2., 0.5], [0.5, 1.5]],
     };
 

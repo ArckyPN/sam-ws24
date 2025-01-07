@@ -8,6 +8,7 @@ A demo using `linfa-ica` showcasing the FastICA algorithm. The `linfa-ica` crate
     - [Simple](#simple)
     - [Custom](#custom)
   - [References](#references)
+  - [Example Output](#example-output)
 
 ## How to install
 
@@ -56,3 +57,19 @@ The FLAC files have been converted to mp3 with [FFmpeg](https://www.ffmpeg.org/)
 ```shell
 ffmpeg -i [input].flac -ab 320k -map_metadata 0 -id3v2_version 3 [output].mp3
 ```
+
+## Example Output
+
+All of the following plots were created using the same command `cargo run --release -- example` by repeatedly running it.
+
+|![](img/plot_basic.png)|
+|:-:|
+|ICA extracted results are expected|
+
+|![](img/plot_ambiguity_example.png)|
+|:-:|
+|ICA extracted results show the ambiguities, Signals have switched places and Box Wave is flipped|
+
+|![](img/plot_broken.png)|
+|:-:|
+|ICA extracted results are flawed|

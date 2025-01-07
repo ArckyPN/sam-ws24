@@ -139,6 +139,7 @@ struct PlotArgs {
     x_2: Vec<f64>,
     y_1: Vec<f64>,
     y_2: Vec<f64>,
+    speech: bool,
 }
 
 impl PlotArgs {
@@ -319,11 +320,18 @@ fn plot(args: PlotArgs) -> anyhow::Result<()> {
             .label(labels[i].1)
             .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], LEGEND2));
 
+        // set the legend position based on command
+        let pos = if args.speech {
+            SeriesLabelPosition::UpperRight
+        } else {
+            SeriesLabelPosition::MiddleRight
+        };
+
         // style the legend
         cc.configure_series_labels()
             .border_style(BLACK)
             .label_font(LABEL_STYLE)
-            .position(SeriesLabelPosition::UpperRight)
+            .position(pos)
             .draw()?;
     }
 
@@ -568,9 +576,9 @@ fn main() -> anyhow::Result<()> {
     let a = match cli.command {
         Commands::Example(_) => {
             // original mixing matrix (plot on slide 4)
-            array![[0.75, 1.5], [0.5, 2.]]
+            // array![[0.75, 1.5], [0.5, 2.]]
             // ambiguity plot example (plot on slide 9)
-            // array![[2., 1.5], [0.5, 0.75]]
+            array![[2., 1.5], [0.5, 0.75]]
         }
         Commands::Speech(_) => array![[2., 0.5], [0.5, 1.5]],
     };
@@ -605,7 +613,7 @@ fn main() -> anyhow::Result<()> {
     let (y_1, y_2) = (y.column(0).to_vec(), y.column(1).to_vec());
 
     // save signals for speech command
-    if let Commands::Speech(sp) = cli.command {
+    if let Commands::Speech(ref sp) = cli.command {
         // get audio data
         let Some(audio) = audio_data else {
             unreachable!("always Some for Speech Commands")
@@ -618,9 +626,14 @@ fn main() -> anyhow::Result<()> {
         speaker_2.data = y_2.clone().iter().map(|e| (*e * 1e6) as i16).collect();
 
         // save to disk
-        save_audio_to_file(sp.speaker_1, speaker_1, Some("ica"))?;
-        save_audio_to_file(sp.speaker_2, speaker_2, Some("ica"))?;
+        save_audio_to_file(sp.speaker_1.clone(), speaker_1, Some("ica"))?;
+        save_audio_to_file(sp.speaker_2.clone(), speaker_2, Some("ica"))?;
     }
+
+    let is_speech = match cli.command {
+        Commands::Example(_) => false,
+        Commands::Speech(_) => true,
+    };
 
     // plot the data
     plot(PlotArgs {
@@ -633,6 +646,7 @@ fn main() -> anyhow::Result<()> {
         x_2: x.column(1).to_vec(),
         y_1,
         y_2,
+        speech: is_speech,
     })?;
 
     println!("Runtime: {:?}", now.elapsed());

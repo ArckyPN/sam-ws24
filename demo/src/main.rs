@@ -431,6 +431,8 @@ where
         output.set_len(output.len().wrapping_add(encoded_size));
     }
 
+    // append the tag to the filename of path:
+    // e.g. ../dir/file.mp3 -> ../dir/file_tag.mp3
     let path = match tag {
         Some(tag) => {
             let path = path.as_ref();

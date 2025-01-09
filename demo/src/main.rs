@@ -338,7 +338,10 @@ fn plot(args: PlotArgs) -> anyhow::Result<()> {
     // save the plot
     root_area.present().context("failed saving plot")?;
 
-    println!("saved plot to {}", args.output);
+    println!(
+        "saved plot to {}",
+        PathBuf::from(args.output.clone()).canonicalize()?.display()
+    );
 
     Ok(())
 }
@@ -457,7 +460,7 @@ where
 
     // write encoded data to file
     std::fs::write(&path, output)?;
-    println!("saved audio to {:?}", path);
+    println!("saved audio to {}", path.canonicalize()?.display());
 
     Ok(())
 }

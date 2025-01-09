@@ -460,6 +460,20 @@ where
     Ok(())
 }
 
+/// amplify the signal `data` to an audible level and assign it to the audio data `base`
+fn normalize_audio(base: &mut Frame, data: &[f64]) -> anyhow::Result<()> {
+    // get absolute maximum of the signal
+    let abs_max = data.iter().fold(0., |acc, e| e.abs().max(acc));
+
+    // amplify the signal to max of 16 bit integer to avoid clipping
+    base.data = data
+        .iter()
+        .map(|e| (*e * i16::MAX as f64 / abs_max) as i16)
+        .collect();
+
+    Ok(())
+}
+
 /// prepares the data of the speech command
 ///
 /// returns x values, audio signal 1 values, audio signal 2 values and audio meta data
@@ -605,7 +619,7 @@ fn main() -> anyhow::Result<()> {
     let y = ica.predict(&x);
 
     // extract signals from matrix
-    let (y_1, y_2) = (y.column(0).to_vec(), y.column(1).to_vec());
+    let (y_1, y_2): (Vec<f64>, Vec<f64>) = (y.column(0).to_vec(), y.column(1).to_vec());
 
     // save signals for speech command
     if let Commands::Speech(ref sp) = cli.command {
@@ -616,9 +630,9 @@ fn main() -> anyhow::Result<()> {
 
         // amplify signals to make them audible
         let mut speaker_1 = audio.clone();
-        speaker_1.data = y_1.clone().iter().map(|e| (*e * 1e6) as i16).collect();
+        normalize_audio(&mut speaker_1, &y_1)?;
         let mut speaker_2 = audio;
-        speaker_2.data = y_2.clone().iter().map(|e| (*e * 1e6) as i16).collect();
+        normalize_audio(&mut speaker_2, &y_2)?;
 
         // save to disk
         save_audio_to_file(sp.speaker_1.clone(), speaker_1, Some("ica"))?;
